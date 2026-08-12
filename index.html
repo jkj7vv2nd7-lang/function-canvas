@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数学探究キャンバス</title>
+  
+  <!-- React & ReactDOM (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel (ブラウザ内でJSX/TSXを即時コンパイル) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- KaTeX CSS & JS (数式描画) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // 全角数字・記号を半角に自動変換する関数
+    const toHalfWidth = (str) => {
+      if (!str) return '';
+      return str
+        .replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+        .replace(/[．。]/g, '.')
+        .replace(/[ー−―]/g, '-');
+    };
+
+    function App() {
+      // アプリ設定
+      const [stage, setStage] = useState('junior');
+      const [funcCategory, setFuncCategory] = useState('linear');
+      const [isPresentation, setIsPresentation] = useState(false);
+
+      // 探究用スイッチ
+      const [showAnswerGraph, setShowAnswerGraph] = useState(false);
+      const [showAnswerTable, setShowAnswerTable] = useState(false);
+      const [showSlopeTriangle, setShowSlopeTriangle] = useState(false);
+
+      // フローティング表パネルの状態
+      const [showTablePanel, setShowTablePanel] = useState(true);
+      const [isTableMinimized, setIsTableMinimized] = useState(false);
+      const [tablePos, setTablePos] = useState({ x: 20, y: 70 });
+      const [isDraggingTable, setIsDraggingTable] = useState(false);
+      const dragOffsetRef = useRef({ x: 0, y: 0 });
+
+      // パラメータ状態
+      const [a, setA] = useState(2);
+      const [b, setB] = useState(1);
+      const [p, setP] = useState(0);
+      const [q, setQ] = useState(0);
+
+      // ズーム（目盛り幅）
+      const [scale, setScale] = useState(40);
+
+      // 2本目の直線（交点用）
+      const [showGraph2, setShowGraph2] = useState(false);
+      const [a2, setA2] = useState(-1);
+      const [b2, setB2] = useState(5);
+
+      // 自由設定可能な x の配列 (デフォルト9組: -4 〜 4)
+      const [xValues, setXValues] = useState(['-4', '-3', '-2', '-1', '0', '1', '2', '3', '4']);
+      // 表の y の手入力データ状態
+      const [manualTableInputs, setManualTableInputs] = useState({});
+
+      // 作図データ
+      const [mode, setMode] = useState('move');
+      const [points, setPoints] = useState([]);
+      const [lines, setLines] = useState([]);
+      const [multiCurves, setMultiCurves] = useState([]);
+      const [activeCurvePointIds, setActiveCurvePointIds] = useState([]);
+      const [selectedPointId, setSelectedPointId] = useState(null);
+
+      // Ref
+      const canvasRef = useRef(null);
+      const mathRef = useRef(null);
+      const isDraggingPointRef = useRef(false);
+      const activePointIdRef = useRef(null);
+
+      // 分数表記 (LaTeX)
+      const toFractionLatex = (val) => {
+        if (Number.isInteger(val)) return `${val}`;
+        const tolerance = 1.0E-6;
+        let h1 = 1, h2 = 0, k1 = 0, k2 = 1;
+        let bVal = Math.abs(val);
+        do {
+          const aVal = Math.floor(bVal);
+          let aux = h1; h1 = aVal * h1 + h2; h2 = aux;
+          aux = k1; k1 = aVal * k1 + k2; k2 = aux;
+          bVal = 1 / (bVal - aVal);
+        } while (Math.abs(Math.abs(val) - h1 / k1) > Math.abs(val) * tolerance);
+
+        const sign = val < 0 ? '-' : '';
+        return `${sign}\\frac{${h1}}{${k1}}`;
+      };
+
+      // フルスクリーン切り替え
+      const toggleFullScreen = () => {
+        try {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen().catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn("Fullscreen API not supported:", e);
+        }
+      };
+
+      // 作図のリセット
+      const resetUserDrawings = () => {
+        setPoints([]);
+        setLines([]);
+        setMultiCurves([]);
+        setActiveCurvePointIds([]);
+        setSelectedPointId(null);
+        setManualTableInputs({});
+      };
+
+      const handleStageChange = (newStage) => {
+        setStage(newStage);
+        resetUserDrawings();
+        if (newStage === 'elementary') {
+          setFuncCategory('linear'); setA(2); setB(0); setP(0); setQ(0);
+          setXValues(['0', '1', '2', '3', '4', '5', '6', '7', '8']);
+        } else if (newStage === 'junior') {
+          setFuncCategory('linear'); setA(2); setB(1); setP(0); setQ(0);
+          setXValues(['-4', '-3', '-2', '-1', '0', '1', '2', '3', '4']);
+        } else {
+          setFuncCategory('quad_general'); setA(1); setP(1); setQ(-2);
+          setXValues(['-4', '-3', '-2', '-1', '0', '1', '2', '3', '4']);
+        }
+      };
+
+      const handleFuncCategoryChange = (newCategory) => {
+        setFuncCategory(newCategory);
+        resetUserDrawings();
+      };
+
+      // 関数のy座標計算
+      const calculateY = (xVal, paramA = a, paramB = b) => {
+        if (isNaN(xVal) || !isFinite(xVal)) return null;
+        let yVal = null;
+        try {
+          switch (funcCategory) {
+            case 'linear': yVal = paramA * xVal + (stage === 'elementary' ? 0 : paramB); break;
+            case 'inverse': yVal = xVal === 0 ? null : paramA / xVal; break;
+            case 'quad_basic': yVal = paramA * Math.pow(xVal, 2); break;
+            case 'quad_general': yVal = paramA * Math.pow(xVal - p, 2) + q; break;
+            case 'trig_sin': yVal = paramA * Math.sin(xVal); break;
+            case 'exponential': yVal = Math.pow(paramA <= 0 ? 2 : paramA, xVal); break;
+            case 'logarithmic': yVal = xVal <= 0 ? null : Math.log(xVal) / Math.log(paramA <= 1 ? 2 : paramA); break;
+          }
+        } catch (e) {
+          return null;
+        }
+        return (yVal !== null && isFinite(yVal) && !isNaN(yVal)) ? yVal : null;
+      };
+
+      // xの変域・刻み幅プリセット設定
+      const setXPreset = (type) => {
+        if (type === 'integer7') setXValues(['-3', '-2', '-1', '0', '1', '2', '3']);
+        if (type === 'integer9') setXValues(['-4', '-3', '-2', '-1', '0', '1', '2', '3', '4']);
+        if (type === 'step05') setXValues(['-2', '-1.5', '-1', '-0.5', '0', '0.5', '1', '1.5', '2']);
+        if (type === 'step01') setXValues(['0', '0.1', '0.2', '0.3', '0.4', '0.5', '0.6', '0.7', '0.8']);
+        if (type === 'positive') setXValues(['0', '1', '2', '3', '4', '5', '6', '7', '8']);
+        setManualTableInputs({});
+        setPoints(points.filter(p => !p.fromTable));
+      };
+
+      // 表の x の入力値変更
+      const handleXInputChange = (index, rawValStr) => {
+        const valStr = toHalfWidth(rawValStr);
+        const updatedX = [...xValues];
+        updatedX[index] = valStr;
+        setXValues(updatedX);
+        updateTablePoint(index, valStr, manualTableInputs[index]);
+      };
+
+      // 表の y の入力値変更
+      const handleYInputChange = (index, rawValStr) => {
+        const valStr = toHalfWidth(rawValStr);
+        const newInputs = { ...manualTableInputs, [index]: valStr };
+        setManualTableInputs(newInputs);
+        updateTablePoint(index, xValues[index], valStr);
+      };
+
+      // 表からの点の追加・更新
+      const updateTablePoint = (index, xStr, yStr) => {
+        const numX = parseFloat(xStr);
+        const numY = parseFloat(yStr);
+
+        const pointId = `table_p_col_${index}`;
+        const existingIndex = points.findIndex((p) => p.id === pointId);
+
+        if (!isNaN(numX) && !isNaN(numY) && isFinite(numX) && isFinite(numY)) {
+          if (existingIndex >= 0) {
+            const updated = [...points];
+            updated[existingIndex] = { ...updated[existingIndex], x: numX, y: numY };
+            setPoints(updated);
+          } else {
+            setPoints([...points, { id: pointId, x: numX, y: numY, fromTable: true }]);
+          }
+        } else if (existingIndex >= 0) {
+          setPoints(points.filter((p) => p.id !== pointId));
+        }
+      };
+
+      // KaTeX数式生成
+      useEffect(() => {
+        if (!mathRef.current || !window.katex) return;
+        try {
+          let latex = '';
+          const aStr = a === 1 ? '' : a === -1 ? '-' : toFractionLatex(a);
+
+          switch (funcCategory) {
+            case 'inverse': latex = `y = \\frac{${a}}{x}`; break;
+            case 'linear':
+              if (stage === 'elementary') latex = `y = ${aStr}x`;
+              else {
+                let bStr = b > 0 ? ` + ${toFractionLatex(b)}` : b < 0 ? ` - ${toFractionLatex(Math.abs(b))}` : '';
+                latex = `y = ${aStr}x${bStr}`;
+              }
+              break;
+            case 'quad_basic': latex = `y = ${aStr}x^2`; break;
+            case 'quad_general':
+              const pStr = p === 0 ? 'x' : p > 0 ? `(x - ${p})` : `(x + ${Math.abs(p)})`;
+              const qStr = q > 0 ? ` + ${q}` : q < 0 ? ` - ${Math.abs(q)}` : '';
+              latex = `y = ${aStr}${pStr}^2${qStr}`;
+              break;
+            case 'trig_sin': latex = `y = ${aStr}\\sin(x)`; break;
+            case 'exponential': latex = `y = ${a <= 0 ? 2 : a}^x`; break;
+            case 'logarithmic': latex = `y = \\log_{${a <= 1 ? 2 : a}}(x)`; break;
+          }
+
+          window.katex.render(latex, mathRef.current, { throwOnError: false, displayMode: true });
+        } catch (err) {
+          if (mathRef.current) mathRef.current.innerText = "y = ...";
+        }
+      }, [a, b, p, q, funcCategory, stage]);
+
+      // 画像保存
+      const downloadAsImage = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        try {
+          const link = document.createElement('a');
+          link.download = `math_canvas_${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      // スプライン曲線描画
+      const drawSplineCurve = (ctx, curvePoints) => {
+        if (curvePoints.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(curvePoints[0].x, curvePoints[0].y);
+
+        if (curvePoints.length === 2) {
+          ctx.lineTo(curvePoints[1].x, curvePoints[1].y);
+        } else {
+          for (let i = 0; i < curvePoints.length - 1; i++) {
+            const p0 = curvePoints[i === 0 ? i : i - 1];
+            const p1 = curvePoints[i];
+            const p2 = curvePoints[i + 1];
+            const p3 = curvePoints[i + 2 < curvePoints.length ? i + 2 : i + 1];
+
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+          }
+        }
+        ctx.stroke();
+      };
+
+      // Canvas描画ロジック
+      const drawCanvas = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const width = canvas.width;
+        const height = canvas.height;
+        if (width === 0 || height === 0) return;
+
+        const centerX = stage === 'elementary' ? 60 : width / 2;
+        const centerY = stage === 'elementary' ? height - 60 : height / 2;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // 1. グリッドと目盛り数字
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+        ctx.font = '10px sans-serif'; ctx.fillStyle = '#94a3b8';
+
+        for (let x = centerX % scale; x < width; x += scale) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+          const mathX = Math.round((x - centerX) / scale);
+          if (mathX !== 0 && Math.abs(x - centerX) > 5) {
+            ctx.fillText(`${mathX}`, x - 4, centerY + 14);
+          }
+        }
+        for (let y = centerY % scale; y < height; y += scale) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+          const mathY = Math.round(-(y - centerY) / scale);
+          if (mathY !== 0 && Math.abs(y - centerY) > 5) {
+            ctx.fillText(`${mathY}`, centerX + 6, y + 4);
+          }
+        }
+
+        // 2. 軸
+        ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(width, centerY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, height); ctx.stroke();
+        ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#64748b';
+        ctx.fillText('O', centerX - 14, centerY + 16);
+
+        // 3. 正解グラフ描画
+        if (showAnswerGraph) {
+          ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 3;
+
+          if (funcCategory === 'linear') {
+            ctx.beginPath();
+            const startMathX = stage === 'elementary' ? 0 : -centerX / scale;
+            const endMathX = (width - centerX) / scale;
+            ctx.moveTo(centerX + startMathX * scale, centerY - (a * startMathX + (stage === 'elementary' ? 0 : b)) * scale);
+            ctx.lineTo(width, centerY - (a * endMathX + (stage === 'elementary' ? 0 : b)) * scale);
+            ctx.stroke();
+
+          } else if (funcCategory === 'inverse') {
+            const signs = stage === 'elementary' ? [1] : [-1, 1];
+            signs.forEach((sign) => {
+              ctx.beginPath();
+              let first = true;
+              const startPx = sign === -1 ? 0 : centerX + 2;
+              const endPx = sign === -1 ? centerX - 2 : width;
+
+              for (let px = startPx; px <= endPx; px += 2) {
+                const mathX = (px - centerX) / scale;
+                if (Math.abs(mathX) < 0.05) continue;
+                const mathY = calculateY(mathX);
+                if (mathY === null) continue;
+                if (stage === 'elementary' && mathY < 0) continue;
+                const py = centerY - mathY * scale;
+                if (first) { ctx.moveTo(px, py); first = false; }
+                else { ctx.lineTo(px, py); }
+              }
+              ctx.stroke();
+            });
+
+          } else {
+            ctx.beginPath();
+            let first = true;
+            const startPx = stage === 'elementary' ? centerX : 0;
+
+            for (let px = startPx; px <= width; px += 2) {
+              const mathX = (px - centerX) / scale;
+              const mathY = calculateY(mathX);
+
+              if (mathY !== null) {
+                const py = centerY - mathY * scale;
+                if (first) { ctx.moveTo(px, py); first = false; }
+                else { ctx.lineTo(px, py); }
+              } else {
+                first = true;
+              }
+            }
+            ctx.stroke();
+          }
+
+          // 2本目の直線＆交点
+          if (showGraph2 && funcCategory === 'linear' && stage !== 'elementary') {
+            ctx.strokeStyle = '#059669'; ctx.lineWidth = 3;
+            ctx.beginPath();
+            const startX = -centerX / scale;
+            const endX = (width - centerX) / scale;
+            ctx.moveTo(0, centerY - (a2 * startX + b2) * scale);
+            ctx.lineTo(width, centerY - (a2 * endX + b2) * scale);
+            ctx.stroke();
+
+            if (a !== a2) {
+              const intersectX = (b2 - b) / (a - a2);
+              const intersectY = a * intersectX + b;
+              const iPx = centerX + intersectX * scale;
+              const iPy = centerY - intersectY * scale;
+
+              ctx.beginPath(); ctx.arc(iPx, iPy, 9, 0, Math.PI * 2);
+              ctx.fillStyle = '#8b5cf6'; ctx.fill();
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+              const iLabel = `交点 (${intersectX.toFixed(1)}, ${intersectY.toFixed(1)})`;
+              ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#8b5cf6';
+              ctx.fillText(iLabel, iPx + 12, iPy - 8);
+            }
+          }
+        }
+
+        // 4. 直線
+        lines.forEach((line) => {
+          const p1 = points.find((p) => p.id === line.p1Id);
+          const p2 = points.find((p) => p.id === line.p2Id);
+          if (p1 && p2) {
+            ctx.beginPath();
+            ctx.strokeStyle = '#059669'; ctx.lineWidth = 3;
+            ctx.moveTo(centerX + p1.x * scale, centerY - p1.y * scale);
+            ctx.lineTo(centerX + p2.x * scale, centerY - p2.y * scale);
+            ctx.stroke();
+          }
+        });
+
+        // 5. 「変化の割合」ガイド
+        if (showSlopeTriangle && points.length >= 2) {
+          const sortedPts = [...points].sort((pA, pB) => pA.x - pB.x);
+          for (let i = 0; i < sortedPts.length - 1; i++) {
+            const pt1 = sortedPts[i];
+            const pt2 = sortedPts[i + 1];
+            const x1 = centerX + pt1.x * scale;
+            const y1 = centerY - pt1.y * scale;
+            const x2 = centerX + pt2.x * scale;
+            const y2 = centerY - pt2.y * scale;
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+            ctx.moveTo(x1, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y2);
+            ctx.stroke(); ctx.setLineDash([]);
+
+            const deltaX = (pt2.x - pt1.x).toFixed(1);
+            const deltaY = (pt2.y - pt1.y).toFixed(1);
+            ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = '#ef4444';
+            ctx.fillText(`Δx=${deltaX}`, (x1 + x2) / 2 - 15, y1 + (y2 > y1 ? -6 : 14));
+            ctx.fillText(`Δy=${deltaY}`, x2 + 6, (y1 + y2) / 2 + 4);
+          }
+        }
+
+        // 6. 複数点スプライン曲線
+        multiCurves.forEach((curve) => {
+          const curvePts = curve.pointIds
+            .map((id) => points.find((p) => p.id === id))
+            .filter((p) => p !== undefined)
+            .sort((pA, pB) => pA.x - pB.x)
+            .map((p) => ({ x: centerX + p.x * scale, y: centerY - p.y * scale }));
+
+          ctx.strokeStyle = '#d97706'; ctx.lineWidth = 3;
+          drawSplineCurve(ctx, curvePts);
+        });
+
+        if (activeCurvePointIds.length > 0) {
+          const activePts = activeCurvePointIds
+            .map((id) => points.find((p) => p.id === id))
+            .filter((p) => p !== undefined)
+            .sort((pA, pB) => pA.x - pB.x)
+            .map((p) => ({ x: centerX + p.x * scale, y: centerY - p.y * scale }));
+
+          ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+          drawSplineCurve(ctx, activePts);
+          ctx.setLineDash([]);
+        }
+
+        // 7. 点の描画 ＆ 誤差表示
+        points.forEach((p) => {
+          const px = centerX + p.x * scale;
+          const py = centerY - p.y * scale;
+          const isSelected = selectedPointId === p.id || activeCurvePointIds.includes(p.id);
+
+          ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2);
+          ctx.fillStyle = p.fromTable ? '#059669' : isSelected ? '#ef4444' : '#2563eb';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+          const correctY = calculateY(p.x);
+          let errorStr = '';
+          if (correctY !== null && !showAnswerGraph) {
+            const diff = Math.abs(p.y - correctY);
+            errorStr = diff === 0 ? ' [正解!]' : ` [差:${diff.toFixed(1)}]`;
+          }
+
+          const labelText = `(${p.x}, ${p.y})${errorStr}`;
+          ctx.font = 'bold 11px sans-serif';
+          const textWidth = ctx.measureText(labelText).width;
+          
+          ctx.fillStyle = p.fromTable ? '#059669' : 'rgba(15, 23, 42, 0.85)';
+          ctx.beginPath();
+          ctx.rect(px + 10, py - 22, textWidth + 10, 20);
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(labelText, px + 15, py - 8);
+        });
+      };
+
+      useEffect(() => {
+        drawCanvas();
+      }, [a, b, p, q, a2, b2, showGraph2, showAnswerGraph, showSlopeTriangle, stage, funcCategory, points, lines, multiCurves, activeCurvePointIds, selectedPointId, isPresentation, scale]);
+
+      useEffect(() => {
+        const handleResize = () => {
+          if (canvasRef.current) {
+            const parent = canvasRef.current.parentElement;
+            if (parent) {
+              canvasRef.current.width = parent.clientWidth;
+              canvasRef.current.height = parent.clientHeight;
+              drawCanvas();
+            }
+          }
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, [stage, isPresentation]);
+
+      // ポインター操作
+      const getCoordinates = (e) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return { mathX: 0, mathY: 0 };
+        const rect = canvas.getBoundingClientRect();
+        const pixelX = e.clientX - rect.left;
+        const pixelY = e.clientY - rect.top;
+
+        const centerX = stage === 'elementary' ? 60 : canvas.width / 2;
+        const centerY = stage === 'elementary' ? canvas.height - 60 : canvas.height / 2;
+
+        const rawMathX = (pixelX - centerX) / scale;
+        const rawMathY = -(pixelY - centerY) / scale;
+
+        const nearestX = Math.round(rawMathX);
+        const nearestY = Math.round(rawMathY);
+        const dist = Math.hypot(rawMathX - nearestX, rawMathY - nearestY);
+
+        return {
+          mathX: dist < 0.25 ? nearestX : Number(rawMathX.toFixed(1)),
+          mathY: dist < 0.25 ? nearestY : Number(rawMathY.toFixed(1)),
+        };
+      };
+
+      const handlePointerDown = (e) => {
+        const { mathX, mathY } = getCoordinates(e);
+        const clickedPoint = points.find((p) => Math.hypot(p.x - mathX, p.y - mathY) < 0.4);
+
+        if (mode === 'move') {
+          if (clickedPoint) {
+            isDraggingPointRef.current = true;
+            activePointIdRef.current = clickedPoint.id;
+          }
+        } else if (mode === 'point') {
+          setPoints([...points, { id: `p_${Date.now()}`, x: mathX, y: mathY }]);
+        } else if (mode === 'line') {
+          if (clickedPoint) {
+            if (!selectedPointId) {
+              setSelectedPointId(clickedPoint.id);
+            } else if (selectedPointId !== clickedPoint.id) {
+              setLines([...lines, { id: `l_${Date.now()}`, p1Id: selectedPointId, p2Id: clickedPoint.id }]);
+              setSelectedPointId(null);
+            }
+          }
+        } else if (mode === 'multi_curve') {
+          if (clickedPoint) {
+            if (!activeCurvePointIds.includes(clickedPoint.id)) {
+              setActiveCurvePointIds([...activeCurvePointIds, clickedPoint.id]);
+            }
+          }
+        }
+      };
+
+      const handlePointerMove = (e) => {
+        if (!isDraggingPointRef.current || !activePointIdRef.current) return;
+        const { mathX, mathY } = getCoordinates(e);
+        setPoints((prev) => prev.map((p) => (p.id === activePointIdRef.current ? { ...p, x: mathX, y: mathY } : p)));
+      };
+
+      const handlePointerUp = () => {
+        isDraggingPointRef.current = false;
+        activePointIdRef.current = null;
+      };
+
+      const finishMultiCurve = () => {
+        if (activeCurvePointIds.length >= 2) {
+          setMultiCurves([...multiCurves, { id: `mc_${Date.now()}`, pointIds: activeCurvePointIds }]);
+        }
+        setActiveCurvePointIds([]);
+      };
+
+      const handleTableMouseDown = (e) => {
+        setIsDraggingTable(true);
+        dragOffsetRef.current = { x: e.clientX - tablePos.x, y: e.clientY - tablePos.y };
+      };
+
+      useEffect(() => {
+        const handleMouseMove = (e) => {
+          if (isDraggingTable) {
+            setTablePos({ x: e.clientX - dragOffsetRef.current.x, y: e.clientY - dragOffsetRef.current.y });
+          }
+        };
+        const handleMouseUp = () => setIsDraggingTable(false);
+
+        if (isDraggingTable) {
+          window.addEventListener('mousemove', handleMouseMove);
+          window.addEventListener('mouseup', handleMouseUp);
+        }
+        return () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+        };
+      }, [isDraggingTable]);
+
+      return (
+        <div style={{ ...styles.container, fontSize: isPresentation ? '1.05rem' : '0.95rem' }}>
+          {/* ヘッダー */}
+          <header style={styles.header}>
+            <div style={styles.headerTitle}>数学探究キャンバス</div>
+
+            {/* 学年タブ */}
+            <div style={styles.stageTabGroup}>
+              <button style={{ ...styles.stageTab, ...(stage === 'elementary' ? styles.activeStageTab : {}) }} onClick={() => handleStageChange('elementary')}>🎒 小学校 (比例・反比例)</button>
+              <button style={{ ...styles.stageTab, ...(stage === 'junior' ? styles.activeStageTab : {}) }} onClick={() => handleStageChange('junior')}>🏫 中学校 (一次関数・y=ax²)</button>
+              <button style={{ ...styles.stageTab, ...(stage === 'high' ? styles.activeStageTab : {}) }} onClick={() => handleStageChange('high')}>🎓 高校 (二次・三角・指数対数)</button>
+            </div>
+
+            {/* ツールボタン */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>ズーム:</span>
+              <button style={styles.zoomBtn} onClick={() => setScale((s) => Math.max(20, s - 10))}>🔍-</button>
+              <button style={styles.zoomBtn} onClick={() => setScale((s) => Math.min(80, s + 10))}>🔍+</button>
+              <button style={styles.toolHeaderBtn} onClick={() => setIsPresentation(!isPresentation)}>
+                {isPresentation ? '📱 通常' : '📺 授業提示'}
+              </button>
+              <button style={styles.toolHeaderBtn} onClick={toggleFullScreen}>⛶ 画面いっぱい</button>
+              <button style={styles.toolHeaderBtn} onClick={downloadAsImage}>📸 画像保存</button>
+            </div>
+          </header>
+
+          {/* メインエリア */}
+          <main style={styles.main}>
+            {/* 左側操作パネル */}
+            <aside style={{ ...styles.sidebar, width: isPresentation ? '340px' : '290px' }}>
+              
+              {/* 正解表示 ＆ トグルスイッチ */}
+              <div style={{ ...styles.card, backgroundColor: '#f0f9ff', borderColor: '#0284c7' }}>
+                <h3 style={{ ...styles.cardTitle, color: '#0369a1', borderColor: '#0284c7' }}>💡 自力探究 ＆ 答え合わせ</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={showAnswerGraph}
+                      onChange={(e) => setShowAnswerGraph(e.target.checked)}
+                    />
+                    <b>👁️ 式のグラフ（青線）を表示</b>
+                  </label>
+                  <label style={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={showAnswerTable}
+                      onChange={(e) => setShowAnswerTable(e.target.checked)}
+                    />
+                    <b>👁️ 表の正解数値（答え）を表示</b>
+                  </label>
+                  <label style={{ ...styles.checkboxLabel, color: '#b91c1c' }}>
+                    <input
+                      type="checkbox"
+                      checked={showSlopeTriangle}
+                      onChange={(e) => setShowSlopeTriangle(e.target.checked)}
+                    />
+                    <b>📐 変化の割合ガイドを表示</b>
+                  </label>
+                  {!showTablePanel && (
+                    <button style={styles.showTableBtn} onClick={() => setShowTablePanel(true)}>
+                      📊 表（パネル）を表示する
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>関数の種類を選ぶ</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {stage === 'elementary' && (
+                    <>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'linear' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('linear')}>📈 比例 (y = ax)</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'inverse' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('inverse')}>📉 反比例 (y = a / x)</button>
+                    </>
+                  )}
+                  {stage === 'junior' && (
+                    <>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'linear' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('linear')}>📈 一次関数 (y = ax + b)</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'inverse' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('inverse')}>📉 反比例 (y = a / x)</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'quad_basic' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('quad_basic')}>∪ 2乗に比例する関数 (y = ax²)</button>
+                    </>
+                  )}
+                  {stage === 'high' && (
+                    <>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'quad_general' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('quad_general')}>∪ 二次関数一般形 [ y=a(x-p)²+q ]</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'trig_sin' ? styles.activeFuncBtn : {}) }} onClick={() => handleFuncCategoryChange('trig_sin')}>〰 三角関数 [ y = a sin(x) ]</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'exponential' ? styles.activeFuncBtn : {}) }} onClick={() => { handleFuncCategoryChange('exponential'); setA(2); }}>🚀 指数関数 [ y = aⁿ ]</button>
+                      <button style={{ ...styles.funcBtn, ...(funcCategory === 'logarithmic' ? styles.activeFuncBtn : {}) }} onClick={() => { handleFuncCategoryChange('logarithmic'); setA(2); }}>🔍 対数関数 [ y = logₐ(x) ]</button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>① 式のパラメータ調整</h3>
+                <div style={styles.paramGroup}>
+                  <div style={styles.labelRow}>
+                    <span>変化の割合/係数 (<i>a</i>)</span>
+                    <span style={{ fontWeight: 'bold', color: '#2563eb' }}>a = {a}</span>
+                  </div>
+                  <input type="range" min={stage === 'elementary' ? '0.5' : '-5'} max="5" step="0.5" value={a} onChange={(e) => setA(parseFloat(e.target.value))} style={styles.slider} />
+                </div>
+
+                {funcCategory === 'linear' && stage !== 'elementary' && (
+                  <div style={styles.paramGroup}>
+                    <div style={styles.labelRow}>
+                      <span>切片 (<i>b</i>)</span>
+                      <span style={{ fontWeight: 'bold', color: '#059669' }}>b = {b}</span>
+                    </div>
+                    <input type="range" min="-5" max="5" step="0.5" value={b} onChange={(e) => setB(parseFloat(e.target.value))} style={styles.slider} />
+                  </div>
+                )}
+
+                {funcCategory === 'quad_general' && (
+                  <>
+                    <div style={styles.paramGroup}>
+                      <div style={styles.labelRow}>
+                        <span>頂点の横移動 (<i>p</i>)</span>
+                        <span style={{ fontWeight: 'bold', color: '#d97706' }}>p = {p}</span>
+                      </div>
+                      <input type="range" min="-4" max="4" step="1" value={p} onChange={(e) => setP(parseFloat(e.target.value))} style={styles.slider} />
+                    </div>
+                    <div style={styles.paramGroup}>
+                      <div style={styles.labelRow}>
+                        <span>頂点の縦移動 (<i>q</i>)</span>
+                        <span style={{ fontWeight: 'bold', color: '#d97706' }}>q = {q}</span>
+                      </div>
+                      <input type="range" min="-4" max="4" step="1" value={q} onChange={(e) => setQ(parseFloat(e.target.value))} style={styles.slider} />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 交点計算 */}
+              {stage !== 'elementary' && funcCategory === 'linear' && (
+                <div style={styles.card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ ...styles.cardTitle, margin: 0 }}>② 2直線の交点表示</h3>
+                    <input type="checkbox" checked={showGraph2} onChange={(e) => setShowGraph2(e.target.checked)} />
+                  </div>
+                  {showGraph2 && (
+                    <div style={{ marginTop: '6px' }}>
+                      <p style={{ fontSize: '0.78rem', color: '#059669', margin: '0 0 2px 0', fontWeight: 'bold' }}>緑の直線: y = {a2}x + {b2}</p>
+                      <div style={styles.paramGroup}>
+                        <span style={{ fontSize: '0.75rem' }}>傾き a2 = {a2}</span>
+                        <input type="range" min="-5" max="5" step="1" value={a2} onChange={(e) => setA2(parseFloat(e.target.value))} style={styles.slider} />
+                      </div>
+                      <div style={styles.paramGroup}>
+                        <span style={{ fontSize: '0.75rem' }}>切片 b2 = {b2}</span>
+                        <input type="range" min="-5" max="5" step="1" value={b2} onChange={(e) => setB2(parseFloat(e.target.value))} style={styles.slider} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 数式表示エリア */}
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>現在の数式 (式)</h3>
+                <div style={styles.mathBox} ref={mathRef}></div>
+              </div>
+            </aside>
+
+            {/* 右側：広大なキャンバス領域 */}
+            <section style={styles.canvasSection}>
+              <div style={styles.canvasContainer}>
+                
+                {/* 浮かぶ「表」パネル */}
+                {showTablePanel && (
+                  <div
+                    style={{
+                      ...styles.floatingTablePanel,
+                      left: `${tablePos.x}px`,
+                      top: `${tablePos.y}px`,
+                    }}
+                  >
+                    <div style={styles.floatingHeader} onMouseDown={handleTableMouseDown}>
+                      <span>📊 数値の変化 (表) - x の値も自由変更可</span>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button style={styles.panelActionBtn} onClick={() => setIsTableMinimized(!isTableMinimized)}>
+                          {isTableMinimized ? '□' : 'ー'}
+                        </button>
+                        <button style={styles.panelActionBtn} onClick={() => setShowTablePanel(false)}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    {!isTableMinimized && (
+                      <div style={{ padding: '8px' }}>
+                        {/* xの変域・刻み幅のセットボタン */}
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 'bold' }}>xの刻み幅:</span>
+                          <button style={styles.presetBtn} onClick={() => setXPreset('integer7')}>7組 (-3~3)</button>
+                          <button style={styles.presetBtn} onClick={() => setXPreset('integer9')}>9組 (-4~4)</button>
+                          <button style={styles.presetBtn} onClick={() => setXPreset('step05')}>0.5刻み</button>
+                          <button style={styles.presetBtn} onClick={() => setXPreset('step01')}>0.1刻み</button>
+                          <button style={styles.presetBtn} onClick={() => setXPreset('positive')}>正の数 (0~8)</button>
+                        </div>
+
+                        <div style={styles.tableContainer}>
+                          <table style={styles.dataTable}>
+                            <thead>
+                              <tr>
+                                <th style={styles.thHeader}><i>x</i></th>
+                                {xValues.map((xStr, i) => (
+                                  <th key={i} style={{ border: '1px solid #cbd5e1', padding: '2px', backgroundColor: '#f1f5f9' }}>
+                                    <input
+                                      type="text"
+                                      value={xStr}
+                                      onChange={(e) => handleXInputChange(i, e.target.value)}
+                                      style={styles.tableXInput}
+                                    />
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td style={styles.tdHeader}><i>y</i></td>
+                                {xValues.map((xStr, i) => {
+                                  const numX = parseFloat(xStr);
+                                  const autoY = isNaN(numX) ? null : calculateY(numX);
+                                  const displayAutoY = autoY === null ? '×' : Number.isInteger(autoY) ? autoY : autoY.toFixed(2);
+
+                                  return (
+                                    <td key={i} style={{ border: '1px solid #cbd5e1', padding: '2px' }}>
+                                      <input
+                                        type="text"
+                                        value={showAnswerTable ? String(displayAutoY) : (manualTableInputs[i] ?? '')}
+                                        onChange={(e) => handleYInputChange(i, e.target.value)}
+                                        placeholder="?"
+                                        style={styles.tableYInput}
+                                      />
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* キャンバス */}
+                <canvas
+                  ref={canvasRef}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  style={{ width: '100%', height: '100%', touchAction: 'none' }}
+                />
+
+                {/* 作図ツールバー */}
+                <div style={styles.toolbar}>
+                  <button style={{ ...styles.toolBtn, ...(mode === 'move' ? styles.activeToolBtn : {}) }} onClick={() => { setMode('move'); setSelectedPointId(null); }}>🖐 移動</button>
+                  <button style={{ ...styles.toolBtn, ...(mode === 'point' ? styles.activeToolBtn : {}) }} onClick={() => { setMode('point'); setSelectedPointId(null); }}>● 点を置く</button>
+                  <button style={{ ...styles.toolBtn, ...(mode === 'line' ? styles.activeToolBtn : {}) }} onClick={() => { setMode('line'); setActiveCurvePointIds([]); }}>／ 直線で結ぶ</button>
+                  <button
+                    style={{ ...styles.toolBtn, ...(mode === 'multi_curve' ? styles.activeToolBtn : {}) }}
+                    onClick={() => { setMode('multi_curve'); setSelectedPointId(null); }}
+                  >
+                    ~ 複数点を結ぶ曲線
+                  </button>
+
+                  {mode === 'multi_curve' && activeCurvePointIds.length >= 2 && (
+                    <button style={styles.finishCurveBtn} onClick={finishMultiCurve}>
+                      ✓ 結び終える ({activeCurvePointIds.length}点)
+                    </button>
+                  )}
+
+                  <button style={styles.clearBtn} onClick={resetUserDrawings}>🗑 作図リセット</button>
+                </div>
+              </div>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
+    // CSSスタイル
+    const styles = {
+      container: { display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', backgroundColor: '#f8fafc', userSelect: 'none', overflow: 'hidden' },
+      header: { height: '50px', backgroundColor: '#1e293b', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', flexShrink: 0 },
+      headerTitle: { fontSize: '1.05rem', fontWeight: 'bold' },
+      stageTabGroup: { display: 'flex', gap: '4px' },
+      stageTab: { padding: '4px 10px', borderRadius: '14px', border: 'none', backgroundColor: '#334155', color: '#94a3b8', fontSize: '0.78rem', fontWeight: 'bold', cursor: 'pointer' },
+      activeStageTab: { backgroundColor: '#2563eb', color: '#ffffff' },
+      zoomBtn: { padding: '2px 6px', borderRadius: '4px', border: 'none', backgroundColor: '#334155', color: '#ffffff', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' },
+      toolHeaderBtn: { padding: '4px 8px', borderRadius: '6px', border: 'none', backgroundColor: '#475569', color: '#ffffff', fontSize: '0.78rem', cursor: 'pointer' },
+      main: { display: 'flex', flex: 1, padding: '8px', gap: '8px', overflow: 'hidden' },
+      
+      sidebar: { display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '100%', paddingRight: '2px' },
+      card: { backgroundColor: '#ffffff', borderRadius: '8px', padding: '8px 10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', flexShrink: 0 },
+      cardTitle: { margin: '0 0 4px 0', fontSize: '0.82rem', borderLeft: '4px solid #2563eb', paddingLeft: '6px', color: '#334155', fontWeight: 'bold' },
+      checkboxLabel: { fontSize: '0.78rem', color: '#0369a1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' },
+      showTableBtn: { marginTop: '4px', padding: '3px 6px', borderRadius: '4px', border: '1px solid #0284c7', backgroundColor: '#ffffff', color: '#0284c7', fontWeight: 'bold', fontSize: '0.75rem', cursor: 'pointer' },
+      funcBtn: { width: '100%', minHeight: '30px', padding: '0 6px', borderRadius: '5px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#334155', fontWeight: 'bold', textAlign: 'left', fontSize: '0.78rem', cursor: 'pointer' },
+      activeFuncBtn: { backgroundColor: '#eff6ff', borderColor: '#2563eb', color: '#2563eb' },
+      paramGroup: { marginBottom: '4px' },
+      labelRow: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '1px' },
+      slider: { width: '100%', height: '5px', accentColor: '#2563eb', cursor: 'pointer' },
+      mathBox: { backgroundColor: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '6px', padding: '4px', textAlign: 'center', minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      
+      canvasSection: { flex: 1, height: '100%', position: 'relative' },
+      canvasContainer: { position: 'relative', width: '100%', height: '100%', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' },
+      
+      floatingTablePanel: { position: 'absolute', zIndex: 10, backgroundColor: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(4px)', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', width: 'auto' },
+      floatingHeader: { padding: '5px 8px', backgroundColor: '#1e293b', color: '#ffffff', borderRadius: '7px 7px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'move', fontSize: '0.78rem', fontWeight: 'bold' },
+      panelActionBtn: { backgroundColor: 'transparent', border: 'none', color: '#ffffff', fontWeight: 'bold', cursor: 'pointer', padding: '0 4px' },
+      presetBtn: { padding: '2px 5px', border: '1px solid #cbd5e1', borderRadius: '4px', backgroundColor: '#ffffff', color: '#334155', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 'bold' },
+      tableContainer: { overflowX: 'auto' },
+      dataTable: { borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.8rem' },
+      thHeader: { backgroundColor: '#f1f5f9', padding: '3px', border: '1px solid #cbd5e1', width: '28px' },
+      tdHeader: { backgroundColor: '#f1f5f9', padding: '3px', border: '1px solid #cbd5e1', fontWeight: 'bold' },
+      tableXInput: { width: '42px', textAlign: 'center', border: '1px solid #94a3b8', borderRadius: '3px', padding: '2px', fontWeight: 'bold', color: '#1e293b', backgroundColor: '#ffffff' },
+      tableYInput: { width: '42px', textAlign: 'center', border: '1px solid #3b82f6', borderRadius: '3px', padding: '2px', fontWeight: 'bold', color: '#059669', backgroundColor: '#f0fdf4' },
+
+      toolbar: { position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)', padding: '3px 8px', borderRadius: '18px', border: '1px solid #cbd5e1', display: 'flex', gap: '4px', zIndex: 5 },
+      toolBtn: { minHeight: '32px', padding: '0 10px', border: 'none', borderRadius: '14px', backgroundColor: 'transparent', fontWeight: 'bold', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' },
+      activeToolBtn: { backgroundColor: '#2563eb', color: '#ffffff' },
+      finishCurveBtn: { minHeight: '32px', padding: '0 10px', border: 'none', borderRadius: '14px', backgroundColor: '#059669', fontWeight: 'bold', color: '#ffffff', cursor: 'pointer', fontSize: '0.8rem' },
+      clearBtn: { minHeight: '32px', padding: '0 10px', border: 'none', borderRadius: '14px', backgroundColor: '#fef2f2', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' },
+    };
+
+    // レンダリング実行
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
