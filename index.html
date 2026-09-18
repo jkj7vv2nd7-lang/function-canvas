@@ -1114,6 +1114,28 @@ function initLearningRoute(){loadLearningRoute();document.querySelectorAll(".lea
 .portfolio-item-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.portfolio-item-title{font-weight:700}.portfolio-item-meta{font-size:.74rem;color:var(--muted);margin-top:3px}.portfolio-item-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.portfolio-growth{margin-top:12px;padding:12px;border-radius:11px;background:var(--surface-muted);line-height:1.65}.portfolio-growth h4{margin:0 0 6px}.portfolio-status{min-height:18px;margin-top:7px;color:var(--muted);font-size:.74rem}.portfolio-empty{padding:14px;text-align:center;color:var(--muted);font-size:.8rem}
 @media(max-width:640px){.portfolio-actions button{flex:1 1 140px}.portfolio-item-head{align-items:flex-start;flex-direction:column}}
 @media print{.portfolio-box{border:0;padding:0}.portfolio-box>.panel-heading,.portfolio-intro,.portfolio-actions,.portfolio-status,.portfolio-item-actions{display:none}}
+
+/* v15 授業モード */
+.lesson-mode-panel{padding:18px;border:2px solid var(--primary);background:var(--surface)}
+.lesson-mode-panel.is-student-view .lesson-teacher-only{display:none!important}
+.lesson-mode-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.lesson-mode-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;background:var(--primary);color:#fff;font-size:.72rem;font-weight:700}
+.lesson-phase-track{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:12px 0}
+.lesson-phase{border:0;border-radius:8px;background:var(--surface-muted);color:var(--muted);padding:7px 3px;font-size:.67rem;font-weight:700;cursor:pointer}
+.lesson-phase.is-active{background:var(--primary);color:#fff}
+.lesson-phase.is-done{outline:1px solid var(--primary)}
+.lesson-prompt{margin:10px 0;padding:11px;border-left:4px solid var(--accent);border-radius:8px;background:var(--surface-muted)}
+.lesson-prompt strong{font-size:.76rem}.lesson-prompt p{margin:4px 0 0;font-size:.84rem;line-height:1.6}
+.lesson-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lesson-textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit;font-size:.8rem}
+.lesson-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.lesson-actions .button{flex:1 1 120px}
+.lesson-memo{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.lesson-tags{display:flex;flex-wrap:wrap;gap:6px}.lesson-tag{min-height:36px!important;font-size:.72rem!important}
+.lesson-tag.is-selected{border-color:var(--primary);background:var(--primary);color:#fff}
+.lesson-status{min-height:18px;margin-top:7px;color:var(--muted);font-size:.72rem}
+.lesson-export-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+@media(max-width:760px){.lesson-phase-track{grid-template-columns:repeat(3,1fr)}.lesson-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -1595,6 +1617,24 @@ function initLearningRoute(){loadLearningRoute();document.querySelectorAll(".lea
         </div>
         <small class="muted-note">提示モードは全画面・大文字になります。印刷はグラフ＋表＋式が出力されます。</small>
       </section>
+
+<section class="panel lesson-mode-panel" id="lessonModePanel" aria-label="授業モード">
+<div class="lesson-mode-header"><div><h2>授業モード</h2><p class="inquiry-theme-hint">先生が授業の流れを進め、表示する問いを整えます。</p></div><span id="lessonModeBadge" class="lesson-mode-badge">先生表示</span></div>
+<div class="lesson-phase-track" aria-label="授業フェーズ">
+<button class="lesson-phase is-active" type="button" data-lesson-phase="0">導入</button><button class="lesson-phase" type="button" data-lesson-phase="1">予想</button><button class="lesson-phase" type="button" data-lesson-phase="2">個人探究</button><button class="lesson-phase" type="button" data-lesson-phase="3">比較・交流</button><button class="lesson-phase" type="button" data-lesson-phase="4">全体共有</button><button class="lesson-phase" type="button" data-lesson-phase="5">まとめ</button>
+</div>
+<div class="lesson-prompt"><strong id="lessonPhaseTitle">導入</strong><p id="lessonPhasePrompt">今日の関数について、まず「何が変わるのか」を見つける視点を共有しましょう。</p></div>
+<div class="lesson-grid lesson-teacher-only">
+<div><label class="inquiry-label" for="lessonObjectiveInput">授業のねらい</label><textarea id="lessonObjectiveInput" class="lesson-textarea" rows="3" placeholder="授業のねらい"></textarea></div>
+<div><label class="inquiry-label" for="lessonQuestionInput">先生の中心発問</label><textarea id="lessonQuestionInput" class="lesson-textarea" rows="3" placeholder="中心となる発問"></textarea></div>
+</div>
+<div class="lesson-actions"><button id="lessonPrevButton" class="button button-small" type="button">← 前の段階</button><button id="lessonNextButton" class="button button-primary button-small" type="button">次の段階 →</button><button id="lessonStudentViewButton" class="button button-small" type="button">生徒表示</button><button id="lessonResetButton" class="button button-small" type="button">授業をリセット</button></div>
+<div class="lesson-memo lesson-teacher-only"><strong class="inquiry-label">見取りメモ</strong><div class="lesson-tags">
+<button class="button lesson-tag button-small" type="button" data-lesson-tag="予想した">予想した</button><button class="button lesson-tag button-small" type="button" data-lesson-tag="根拠を示した">根拠を示した</button><button class="button lesson-tag button-small" type="button" data-lesson-tag="表とグラフをつないだ">表↔グラフ</button><button class="button lesson-tag button-small" type="button" data-lesson-tag="式とグラフをつないだ">式↔グラフ</button><button class="button lesson-tag button-small" type="button" data-lesson-tag="友達の考えと比較した">比較した</button>
+</div><label class="inquiry-label" for="lessonMemoInput">自由メモ</label><textarea id="lessonMemoInput" class="lesson-textarea" rows="2" placeholder="授業中の気づき"></textarea></div>
+<div class="lesson-export-row lesson-teacher-only"><button id="lessonExportTextButton" class="button button-small" type="button">授業記録TXT</button><button id="lessonExportJsonButton" class="button button-small" type="button">授業記録JSON</button></div>
+<div id="lessonModeStatus" class="lesson-status" role="status">授業モードを準備しました。</div>
+</section>
     </aside>
   </main>
 
@@ -5673,8 +5713,30 @@ function initPortfolio(){document.getElementById("savePortfolioButton")?.addEven
 
 function initResearchReport(){document.getElementById("generateResearchReportButton")?.addEventListener("click",renderResearchReport);document.getElementById("exportResearchReportButton")?.addEventListener("click",exportResearchReport);document.getElementById("printResearchReportButton")?.addEventListener("click",printResearchReport);}
 
+
+/* v15 授業モード */
+const LESSON_SESSION_KEY="function-explorer-lesson-session-v1";
+const LESSON_PHASES=[
+{title:"導入",teacher:"今日の関数について、まず「何が変わるのか」を見つける視点を共有しましょう。",student:"グラフを見て、気づいたことを1つ見つけましょう。"},
+{title:"予想",teacher:"操作する前に、パラメータを1つ変えたら何が起こるか予想させます。",student:"1つだけ条件を変えたら、グラフはどうなると思いますか。理由も考えましょう。"},
+{title:"個人探究",teacher:"一度に1つだけ変え、表・式・グラフを根拠にします。",student:"パラメータを1つだけ変えて、変化を調べましょう。"},
+{title:"比較・交流",teacher:"変える前と後を比べ、同じ点・違う点・理由を交流させます。",student:"友達の考えと比べて、同じ点と違う点を見つけましょう。"},
+{title:"全体共有",teacher:"複数の考えを並べ、どの根拠が説明を支えているかを整理します。",student:"自分の考えを根拠と一緒に説明し、ほかの考えとつなげましょう。"},
+{title:"まとめ",teacher:"今日の問いに戻り、式・表・グラフをつないだ言葉でまとめます。",student:"「○○を変えると△△になる。なぜなら□□だから」の形でまとめましょう。"}];
+const LESSON_STAGE_DEFAULTS={elementary:{objective:"変化したところと変わらないところを、グラフや表から見つける。",question:"どこが変わった？何が同じ？"},middle:{objective:"変化の割合や傾きと、グラフ・式・表の関係を説明する。",question:"変化の割合や傾きはどう変わった？"},high:{objective:"パラメータとグラフの変換・特徴の関係を説明する。",question:"パラメータとグラフの変化をどう説明できる？"},university:{objective:"定義・仮定を確認し、関数の変化を微分・積分などの観点から説明する。",question:"定義や仮定を明確にすると、どのように説明できる？"}};
+let lessonSession={phase:0,objective:"",question:"",memo:"",tags:[],studentView:false,startedAt:Date.now(),updatedAt:Date.now()};
+function lessonStageKey(){return typeof learnerNavStage==="function"?learnerNavStage():(state.grade<=6?"elementary":state.grade<=9?"middle":state.grade<=12?"high":"university")}
+function lessonDefaults(){return LESSON_STAGE_DEFAULTS[lessonStageKey()]||LESSON_STAGE_DEFAULTS.middle}
+function lessonSave(){lessonSession.updatedAt=Date.now();try{localStorage.setItem(LESSON_SESSION_KEY,JSON.stringify(lessonSession))}catch{}}
+function lessonLoad(){try{const x=JSON.parse(localStorage.getItem(LESSON_SESSION_KEY)||"null");if(x&&typeof x==="object"){lessonSession={...lessonSession,...x};if(!Array.isArray(lessonSession.tags))lessonSession.tags=[]}}catch{}}
+function lessonRender(){const p=LESSON_PHASES[Math.max(0,Math.min(5,lessonSession.phase))],panel=document.getElementById("lessonModePanel");if(!panel)return;panel.classList.toggle("is-student-view",!!lessonSession.studentView);document.querySelectorAll(".lesson-phase").forEach((b,i)=>{b.classList.toggle("is-active",i===lessonSession.phase);b.classList.toggle("is-done",i<lessonSession.phase)});const t=document.getElementById("lessonPhaseTitle"),pr=document.getElementById("lessonPhasePrompt"),badge=document.getElementById("lessonModeBadge");if(t)t.textContent=p.title;if(pr)pr.textContent=lessonSession.studentView?p.student:p.teacher;if(badge)badge.textContent=lessonSession.studentView?"生徒表示":"先生表示";const o=document.getElementById("lessonObjectiveInput"),q=document.getElementById("lessonQuestionInput"),m=document.getElementById("lessonMemoInput");if(o)o.value=lessonSession.objective;if(q)q.value=lessonSession.question;if(m)m.value=lessonSession.memo;document.querySelectorAll("[data-lesson-tag]").forEach(b=>b.classList.toggle("is-selected",lessonSession.tags.includes(b.dataset.lessonTag)));const n=document.getElementById("lessonNextButton"),pbtn=document.getElementById("lessonPrevButton");if(n)n.disabled=lessonSession.phase>=5;if(pbtn)pbtn.disabled=lessonSession.phase<=0}
+function lessonSetPhase(n){lessonSession.phase=Math.max(0,Math.min(5,n));lessonSave();if(state.inquiry){state.inquiry.scenarioStep=Math.min(3,Math.floor(lessonSession.phase*4/6));if(typeof updateInquiryUI==="function")updateInquiryUI()}if(typeof renderLearnerNav==="function")renderLearnerNav();lessonRender();const s=document.getElementById("lessonModeStatus");if(s)s.textContent="「"+LESSON_PHASES[lessonSession.phase].title+"」に進みました。"}
+function lessonExport(kind){const d={...lessonSession,stage:lessonStageKey(),functionType:state.functionType,functionLabel:FUNCTION_DEFINITIONS[state.functionType]?.label||state.functionType,phaseTitle:LESSON_PHASES[lessonSession.phase].title,exportedAt:Date.now()};const ext=kind==="json"?"json":"txt";let body=kind==="json"?JSON.stringify(d,null,2):["関数探究・授業記録","","学習段階："+d.stage,"関数："+d.functionLabel,"授業フェーズ："+d.phaseTitle,"授業のねらい："+d.objective,"中心発問："+d.question,"見取りタグ："+(d.tags.join("、")||"なし"),"","自由メモ："+d.memo].join("\n");const blob=new Blob([body],{type:kind==="json"?"application/json;charset=utf-8":"text/plain;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="関数探究_授業記録_"+new Date().toISOString().slice(0,10)+"."+ext;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function initLessonMode(){lessonLoad();const d=lessonDefaults();if(!lessonSession.objective)lessonSession.objective=d.objective;if(!lessonSession.question)lessonSession.question=d.question;document.querySelectorAll(".lesson-phase").forEach(b=>b.addEventListener("click",()=>lessonSetPhase(Number(b.dataset.lessonPhase))));document.getElementById("lessonPrevButton")?.addEventListener("click",()=>lessonSetPhase(lessonSession.phase-1));document.getElementById("lessonNextButton")?.addEventListener("click",()=>lessonSetPhase(lessonSession.phase+1));document.getElementById("lessonStudentViewButton")?.addEventListener("click",()=>{lessonSession.studentView=!lessonSession.studentView;lessonSave();lessonRender()});document.getElementById("lessonResetButton")?.addEventListener("click",()=>{lessonSession={phase:0,objective:lessonDefaults().objective,question:lessonDefaults().question,memo:"",tags:[],studentView:false,startedAt:Date.now(),updatedAt:Date.now()};lessonSave();lessonRender();if(state.inquiry){state.inquiry.scenarioStep=0;if(typeof updateInquiryUI==="function")updateInquiryUI()}if(typeof renderLearnerNav==="function")renderLearnerNav()});[["lessonObjectiveInput","objective"],["lessonQuestionInput","question"],["lessonMemoInput","memo"]].forEach(x=>document.getElementById(x[0])?.addEventListener("input",e=>{lessonSession[x[1]]=e.target.value;lessonSave()}));document.querySelectorAll("[data-lesson-tag]").forEach(b=>b.addEventListener("click",()=>{const tag=b.dataset.lessonTag;lessonSession.tags=lessonSession.tags.includes(tag)?lessonSession.tags.filter(x=>x!==tag):lessonSession.tags.concat(tag);lessonSave();lessonRender()}));document.getElementById("lessonExportTextButton")?.addEventListener("click",()=>lessonExport("txt"));document.getElementById("lessonExportJsonButton")?.addEventListener("click",()=>lessonExport("json"));lessonRender()}
+
 initialize();
 initLearnerNav();
+initLessonMode();
 initExploreMaker();
 initStudentProblemMaker();
 initResearchReport();
