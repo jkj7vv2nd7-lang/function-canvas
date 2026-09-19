@@ -1136,6 +1136,19 @@ function initLearningRoute(){loadLearningRoute();document.querySelectorAll(".lea
 .lesson-export-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 @media(max-width:760px){.lesson-phase-track{grid-template-columns:repeat(3,1fr)}.lesson-grid{grid-template-columns:1fr}}
 
+
+/* v16 授業設計ウィザード */
+.lesson-design-panel{padding:18px;border:2px solid var(--border);background:var(--surface)}
+.design-stepbar{display:flex;flex-wrap:wrap;gap:5px;margin:12px 0}
+.design-step{flex:1 1 100px;border:1px solid var(--border);border-radius:8px;background:var(--surface-muted);color:var(--muted);padding:7px;font-size:.7rem;font-weight:700;cursor:pointer}
+.design-step.is-active{background:var(--primary);color:#fff}
+.design-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.design-field{display:flex;flex-direction:column;gap:4px}.design-field.full{grid-column:1/-1}
+.design-input{width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);padding:9px 10px;font:inherit;font-size:.82rem}
+.design-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.design-actions .button{flex:1 1 130px}
+.design-status{min-height:18px;margin-top:7px;color:var(--muted);font-size:.72rem}
+@media(max-width:760px){.design-fields{grid-template-columns:1fr}.design-field.full{grid-column:auto}}
+
 </style>
 </head>
 <body>
@@ -1617,6 +1630,26 @@ function initLearningRoute(){loadLearningRoute();document.querySelectorAll(".lea
         </div>
         <small class="muted-note">提示モードは全画面・大文字になります。印刷はグラフ＋表＋式が出力されます。</small>
       </section>
+
+
+<section class="panel lesson-design-panel" id="lessonDesignPanel" aria-label="授業設計ウィザード">
+<div class="lesson-mode-header"><div><h2>授業設計ウィザード</h2><p class="inquiry-theme-hint">授業前に必要な要素を順番に整えます。自動提案は下書きとして使い、最後は先生が決めます。</p></div><span class="lesson-mode-badge">v16</span></div>
+<div class="design-stepbar">
+<button class="design-step is-active" type="button" data-design-step="0">1. 学年</button><button class="design-step" type="button" data-design-step="1">2. 関数</button><button class="design-step" type="button" data-design-step="2">3. ねらい</button><button class="design-step" type="button" data-design-step="3">4. 探究テーマ</button><button class="design-step" type="button" data-design-step="4">5. 導入問い</button><button class="design-step" type="button" data-design-step="5">6. 実験条件</button><button class="design-step" type="button" data-design-step="6">7. 比較視点</button><button class="design-step" type="button" data-design-step="7">8. まとめ</button>
+</div>
+<div class="design-fields">
+<div class="design-field"><label class="inquiry-label" for="designGradeInput">学年・段階</label><select id="designGradeInput" class="design-input"><option value="elementary">小学校</option><option value="middle">中学校</option><option value="high">高校</option><option value="university">大学</option></select></div>
+<div class="design-field"><label class="inquiry-label" for="designFunctionInput">関数</label><select id="designFunctionInput" class="design-input"></select></div>
+<div class="design-field full"><label class="inquiry-label" for="designObjectiveInput">授業のねらい</label><textarea id="designObjectiveInput" class="design-input" rows="2"></textarea></div>
+<div class="design-field full"><label class="inquiry-label" for="designThemeInput">探究テーマ</label><input id="designThemeInput" class="design-input"></div>
+<div class="design-field full"><label class="inquiry-label" for="designIntroInput">導入問い</label><textarea id="designIntroInput" class="design-input" rows="2"></textarea></div>
+<div class="design-field"><label class="inquiry-label" for="designExperimentInput">実験条件</label><input id="designExperimentInput" class="design-input"></div>
+<div class="design-field"><label class="inquiry-label" for="designCompareInput">比較する視点</label><input id="designCompareInput" class="design-input"></div>
+<div class="design-field full"><label class="inquiry-label" for="designSummaryInput">まとめの問い</label><textarea id="designSummaryInput" class="design-input" rows="2"></textarea></div>
+</div>
+<div class="design-actions"><button id="designPrevButton" class="button button-small" type="button">← 前へ</button><button id="designNextButton" class="button button-primary button-small" type="button">次へ →</button><button id="designApplyButton" class="button button-small" type="button">この設計を反映</button><button id="designSaveButton" class="button button-small" type="button">設計を保存</button><button id="designExportButton" class="button button-small" type="button">設計を書き出す</button></div>
+<div id="designStatus" class="design-status" role="status">授業設計を始めましょう。</div>
+</section>
 
 <section class="panel lesson-mode-panel" id="lessonModePanel" aria-label="授業モード">
 <div class="lesson-mode-header"><div><h2>授業モード</h2><p class="inquiry-theme-hint">先生が授業の流れを進め、表示する問いを整えます。</p></div><span id="lessonModeBadge" class="lesson-mode-badge">先生表示</span></div>
@@ -5737,6 +5770,20 @@ function initLessonMode(){lessonLoad();const d=lessonDefaults();if(!lessonSessio
 initialize();
 initLearnerNav();
 initLessonMode();
+
+/* v16 授業設計ウィザード */
+const LESSON_DESIGN_KEY="function-explorer-lesson-design-v1";
+const DESIGN_STEPS=["学年","関数","ねらい","探究テーマ","導入問い","実験条件","比較視点","まとめ"];
+let lessonDesign={step:0,stage:"middle",functionType:"linear",objective:"",theme:"",intro:"",experiment:"",compare:"",summary:"",updatedAt:Date.now()};
+function designStageDefaults(stage){const d={elementary:{objective:"変化したところと変わらないところを見つける。",intro:"どこが変わった？何が同じ？",experiment:"パラメータを1つだけ変える。",compare:"同じところ・違うところ",summary:"見つけた変化を図・表・言葉で説明しよう。"},middle:{objective:"変化の割合や傾きと、表・式・グラフの関係を説明する。",intro:"変化の割合や傾きはどう変わった？",experiment:"1つのパラメータだけを変える。",compare:"傾き・切片・変化の割合",summary:"式・表・グラフをつないで説明しよう。"},high:{objective:"パラメータとグラフの変換・特徴の関係を説明する。",intro:"パラメータとグラフの変化をどう説明できる？",experiment:"条件を1つずつ変え、対応を記録する。",compare:"パラメータと関数の特徴",summary:"観察から一般的な関係を説明しよう。"},university:{objective:"定義・仮定を確認し、関数の変化を数学的に説明する。",intro:"定義や仮定を明確にすると、どう説明できる？",experiment:"仮定を一つずつ確認して変化を調べる。",compare:"定義・極限・微分・積分との関係",summary:"仮定と根拠を明示して説明しよう。"}};return d[stage]||d.middle}
+function designSave(){lessonDesign.updatedAt=Date.now();try{localStorage.setItem(LESSON_DESIGN_KEY,JSON.stringify(lessonDesign))}catch{}}
+function designLoad(){try{const x=JSON.parse(localStorage.getItem(LESSON_DESIGN_KEY)||"null");if(x&&typeof x==="object")lessonDesign={...lessonDesign,...x}}catch{}}
+function designFunctionOptions(){const el=document.getElementById("designFunctionInput");if(!el||typeof FUNCTION_DEFINITIONS==="undefined")return;el.innerHTML=Object.entries(FUNCTION_DEFINITIONS).map(([k,v])=>'<option value="'+k+'">'+(v.label||k)+'</option>').join("");el.value=lessonDesign.functionType}
+function designFillDefaults(force=false){const d=designStageDefaults(lessonDesign.stage);if(force||!lessonDesign.objective)lessonDesign.objective=d.objective;if(force||!lessonDesign.intro)lessonDesign.intro=d.intro;if(force||!lessonDesign.experiment)lessonDesign.experiment=d.experiment;if(force||!lessonDesign.compare)lessonDesign.compare=d.compare;if(force||!lessonDesign.summary)lessonDesign.summary=d.summary;if(!lessonDesign.theme){const themes=typeof inquiryThemes==="function"?inquiryThemes():[];lessonDesign.theme=themes[0]?.label||""}}
+function designRender(){const ids=[["designGradeInput","stage"],["designFunctionInput","functionType"],["designObjectiveInput","objective"],["designThemeInput","theme"],["designIntroInput","intro"],["designExperimentInput","experiment"],["designCompareInput","compare"],["designSummaryInput","summary"]];ids.forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.value=lessonDesign[k]||""});document.querySelectorAll(".design-step").forEach((b,i)=>b.classList.toggle("is-active",i===lessonDesign.step));const p=document.getElementById("designPrevButton"),n=document.getElementById("designNextButton");if(p)p.disabled=lessonDesign.step<=0;if(n)n.disabled=lessonDesign.step>=DESIGN_STEPS.length-1;const s=document.getElementById("designStatus");if(s)s.textContent=(lessonDesign.step+1)+" / "+DESIGN_STEPS.length+"「"+DESIGN_STEPS[lessonDesign.step]+"」を確認しています。"}
+function initLessonDesign(){designLoad();designFunctionOptions();designFillDefaults();designRender();document.querySelectorAll(".design-step").forEach(b=>b.addEventListener("click",()=>{lessonDesign.step=Number(b.dataset.designStep);designSave();designRender()}));document.getElementById("designPrevButton")?.addEventListener("click",()=>{lessonDesign.step=Math.max(0,lessonDesign.step-1);designSave();designRender()});document.getElementById("designNextButton")?.addEventListener("click",()=>{lessonDesign.step=Math.min(7,lessonDesign.step+1);designSave();designRender()});[["designGradeInput","stage"],["designFunctionInput","functionType"],["designObjectiveInput","objective"],["designThemeInput","theme"],["designIntroInput","intro"],["designExperimentInput","experiment"],["designCompareInput","compare"],["designSummaryInput","summary"]].forEach(([id,k])=>document.getElementById(id)?.addEventListener("input",e=>{lessonDesign[k]=e.target.value;if(k==="stage"){designFillDefaults(true);designFunctionOptions()}designSave();designRender()}));document.getElementById("designApplyButton")?.addEventListener("click",()=>{if(FUNCTION_DEFINITIONS[lessonDesign.functionType])state.functionType=lessonDesign.functionType;state.mode=lessonDesign.stage;state.grade={elementary:6,middle:9,high:12,university:13}[lessonDesign.stage]||9;setMissingDefaults();syncControlsFromState();createParameterControls();updateApp();state.inquiry.scenarioStep=0;state.inquiry.themeId="";if(typeof updateInquiryUI==="function")updateInquiryUI();if(typeof lessonSession!=="undefined"){lessonSession.phase=0;lessonSession.objective=lessonDesign.objective;lessonSession.question=lessonDesign.intro;lessonSave();lessonRender()}const s=document.getElementById("designStatus");if(s)s.textContent="授業設計をアプリへ反映しました。"});document.getElementById("designSaveButton")?.addEventListener("click",()=>{designSave();const s=document.getElementById("designStatus");if(s)s.textContent="授業設計を保存しました。"});document.getElementById("designExportButton")?.addEventListener("click",()=>{const body=JSON.stringify(lessonDesign,null,2),blob=new Blob([body],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="関数探究_授業設計_"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)});}
+
+initLessonDesign();
 initExploreMaker();
 initStudentProblemMaker();
 initResearchReport();
